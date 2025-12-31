@@ -1,0 +1,501 @@
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #0f172a;
+  color: #f8fafc;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, 'Noto Sans', 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol';
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+}
+
+#app { width: 100%; display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 12px; }
+
+.ui {
+  width: min(95vw, 560px);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.ui .score { font-weight: 600; }
+.ui button {
+  appearance: none;
+  border: none;
+  background: #22c55e;
+  color: #0b1220;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-weight: 600;
+}
+.ui button:active { transform: translateY(1px); }
+
+.timer-bar {
+  width: min(95vw, 560px);
+  height: 8px;
+  background: rgba(148, 163, 184, 0.25);
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: -4px;
+}
+.timer-fill {
+  height: 100%;
+  width: 100%;
+  background: #b8860b;
+  border-radius: 4px;
+  transition: width 50ms linear;
+  transform-origin: left center;
+}
+.timer-bar.active .timer-fill {
+  background: #daa520;
+}
+.timer-bar.warning .timer-fill {
+  background: #ef4444;
+  animation: pulseBar 300ms ease infinite;
+}
+@keyframes pulseBar {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+.board {
+  width: min(95vw, 560px);
+  aspect-ratio: 6 / 5;
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  grid-template-rows: repeat(5, 1fr);
+  gap: 6px;
+  padding: 6px;
+  border-radius: 12px;
+  background: rgba(148, 163, 184, 0.15);
+  touch-action: none; /* 關閉瀏覽器的滾動/縮放手勢以便拖曳 */
+  overflow: hidden; /* 隱藏從上方落下的珠子 */
+}
+.cell { position: relative; border-radius: 10px; }
+
+.orb {
+  position: absolute; inset: 0;
+  border-radius: 50%;
+  box-shadow: 0 6px 14px rgba(0,0,0,0.35);
+  border: 3px solid rgba(255,255,255,0.15);
+  transition: transform 80ms cubic-bezier(.22,.61,.36,1);
+}
+.orb.dragging { transform: scale(1.04); }
+.orb.floating {
+  z-index: 100;
+  box-shadow: 0 12px 28px rgba(0,0,0,0.5), 0 0 20px rgba(255,255,255,0.3);
+  filter: brightness(1.1);
+}
+.orb.trail { box-shadow: 0 0 22px rgba(255,255,255,0.5), 0 0 12px rgba(255,255,255,0.5) inset; filter: saturate(1.15) brightness(1.12); }
+
+.orb.matched { animation: pop 180ms ease forwards; }
+.orb.matched-big { animation: popBig 280ms ease forwards; }
+.orb.spawn { animation: spawnDrop 320ms cubic-bezier(.22,.61,.36,1) both; }
+.orb.fall { animation: fallBounce 450ms cubic-bezier(.25,.46,.45,.94) both; }
+.orb.falling {
+  --fall-distance: 1;
+  animation: slideDown calc(var(--fall-distance) * 120ms + 200ms) cubic-bezier(.25,.46,.45,.94) both;
+}
+.orb.swap-slide {
+  --swap-x: 0;
+  --swap-y: 0;
+  animation: swapSlide 100ms ease-out both;
+}
+
+@keyframes pop {
+  0% { transform: scale(1.0); opacity: 1; }
+  100% { transform: scale(0.6); opacity: 0; }
+}
+
+/* 大消除動畫 - 先放大再爆裂 */
+@keyframes popBig {
+  0% { transform: scale(1.0); opacity: 1; filter: brightness(1); }
+  30% { transform: scale(1.4); opacity: 1; filter: brightness(1.5); }
+  100% { transform: scale(0.2); opacity: 0; filter: brightness(2); }
+}
+
+@keyframes drop {
+  0% { transform: translateY(-8%) scale(0.92); opacity: 0; }
+  100% { transform: translateY(0) scale(1.0); opacity: 1; }
+}
+
+@keyframes spawnDrop {
+  0% { transform: translateY(-120%) scale(0.85); opacity: 0; }
+  60% { transform: translateY(6%) scale(1.05); opacity: 1; }
+  80% { transform: translateY(-3%) scale(0.98); }
+  100% { transform: translateY(0) scale(1); opacity: 1; }
+}
+
+@keyframes fallBounce {
+  0% { transform: translateY(-40%) scale(0.96); opacity: 0.5; }
+  75% { transform: translateY(2%) scale(1.01); opacity: 1; }
+  90% { transform: translateY(-1%) scale(0.995); }
+  100% { transform: translateY(0) scale(1); opacity: 1; }
+}
+
+@keyframes slideDown {
+  0% { transform: translateY(calc(var(--fall-distance) * -100%)); }
+  85% { transform: translateY(3%); }
+  100% { transform: translateY(0); }
+}
+
+
+
+@keyframes swapSlide {
+  0% { transform: translate(var(--swap-x), var(--swap-y)); }
+  100% { transform: translate(0, 0); }
+}
+
+/* 顏色配置 */
+.orb.red    { 
+  background: 
+    radial-gradient(circle at 25% 25%, rgba(255,255,255,0.9) 0%, rgba(255,220,180,0.4) 15%, transparent 35%),
+    radial-gradient(ellipse at 50% 30%, rgba(255,200,100,0.8) 0%, rgba(255,80,0,0.6) 40%, transparent 60%),
+    radial-gradient(circle at 50% 50%, rgba(255,50,20,0.95) 0%, rgba(200,20,20,1) 45%, rgba(80,0,0,1) 100%);
+  box-shadow: 
+    0 4px 12px rgba(100,0,0,0.5),
+    inset 0 -3px 8px rgba(60,0,0,0.6),
+    inset 0 2px 5px rgba(255,180,100,0.5);
+  border: 2px solid rgba(255,100,50,0.5);
+}
+.orb.blue   { 
+  background: 
+    radial-gradient(circle at 25% 25%, rgba(255,255,255,0.9) 0%, rgba(200,240,255,0.4) 15%, transparent 35%),
+    radial-gradient(ellipse at 50% 30%, rgba(100,200,255,0.8) 0%, transparent 50%),
+    radial-gradient(circle at 50% 50%, rgba(60,180,255,0.9) 0%, rgba(30,120,200,1) 45%, rgba(10,50,120,1) 100%);
+  box-shadow: 
+    0 4px 12px rgba(0,30,80,0.45),
+    inset 0 -3px 8px rgba(5,30,80,0.5),
+    inset 0 2px 5px rgba(180,230,255,0.5);
+  border: 2px solid rgba(150,210,255,0.5);
+}
+.orb.green  { 
+  background: 
+    radial-gradient(circle at 25% 25%, rgba(255,255,255,0.85) 0%, rgba(180,255,180,0.4) 15%, transparent 35%),
+    radial-gradient(ellipse at 50% 35%, rgba(120,240,120,0.8) 0%, rgba(60,180,60,0.6) 40%, transparent 55%),
+    radial-gradient(circle at 50% 50%, rgba(80,200,80,0.9) 0%, rgba(30,140,50,1) 45%, rgba(5,60,20,1) 100%);
+  box-shadow: 
+    0 4px 12px rgba(0,50,20,0.45),
+    inset 0 -3px 8px rgba(0,40,15,0.5),
+    inset 0 2px 5px rgba(160,240,160,0.5);
+  border: 2px solid rgba(100,200,100,0.5);
+}
+.orb.yellow { 
+  background: 
+    radial-gradient(circle at 25% 25%, rgba(255,255,255,0.9) 0%, rgba(255,250,200,0.5) 15%, transparent 35%),
+    radial-gradient(ellipse at 50% 35%, rgba(255,240,150,0.8) 0%, rgba(255,200,50,0.6) 40%, transparent 55%),
+    radial-gradient(circle at 50% 50%, rgba(255,220,80,0.9) 0%, rgba(230,180,40,1) 45%, rgba(150,100,0,1) 100%);
+  box-shadow: 
+    0 4px 12px rgba(120,80,0,0.4),
+    inset 0 -3px 8px rgba(100,60,0,0.4),
+    inset 0 2px 5px rgba(255,240,180,0.5);
+  border: 2px solid rgba(255,210,120,0.5);
+}
+.orb.purple { 
+  background: 
+    radial-gradient(circle at 25% 25%, rgba(255,255,255,0.85) 0%, rgba(220,180,255,0.4) 15%, transparent 35%),
+    radial-gradient(ellipse at 50% 40%, rgba(180,100,255,0.75) 0%, rgba(120,50,180,0.6) 40%, transparent 55%),
+    radial-gradient(circle at 50% 50%, rgba(150,70,210,0.9) 0%, rgba(90,30,160,1) 45%, rgba(30,5,70,1) 100%);
+  box-shadow: 
+    0 4px 12px rgba(40,0,80,0.5),
+    inset 0 -3px 8px rgba(20,0,50,0.6),
+    inset 0 2px 5px rgba(200,160,255,0.5);
+  border: 2px solid rgba(160,100,240,0.5);
+}
+.orb.heart  { 
+  background: 
+    radial-gradient(circle at 25% 25%, rgba(255,255,255,0.9) 0%, rgba(255,200,220,0.4) 15%, transparent 35%),
+    radial-gradient(ellipse at 50% 35%, rgba(255,150,200,0.8) 0%, rgba(240,80,150,0.6) 40%, transparent 55%),
+    radial-gradient(circle at 50% 50%, rgba(255,100,170,0.9) 0%, rgba(220,50,130,1) 45%, rgba(120,20,70,1) 100%);
+  box-shadow: 
+    0 4px 12px rgba(80,0,40,0.45),
+    inset 0 -3px 8px rgba(60,0,30,0.5),
+    inset 0 2px 5px rgba(255,180,210,0.5);
+  border: 2px solid rgba(255,120,180,0.5);
+}
+
+.hint { opacity: 0.85; font-size: 13px; color: #cbd5e1; }
+
+/* Combo 顯示 */
+.combo-display {
+  position: fixed;
+  left: 20px;
+  bottom: 20px;
+  font-size: 32px;
+  font-weight: 800;
+  color: #fbbf24;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.5), 0 0 20px rgba(251, 191, 36, 0.4);
+  opacity: 0;
+  transform: scale(0.5) translateY(20px);
+  transition: opacity 150ms ease, transform 150ms ease;
+  pointer-events: none;
+  z-index: 100;
+}
+.combo-display.show {
+  opacity: 1;
+  transform: scale(1) translateY(0);
+  animation: comboPop 200ms ease-out;
+}
+.combo-display.high-combo {
+  color: #f97316;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.5), 0 0 30px rgba(249, 115, 22, 0.6);
+  font-size: 38px;
+}
+.combo-display.super-combo {
+  color: #ef4444;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.5), 0 0 40px rgba(239, 68, 68, 0.8), 0 0 60px rgba(239, 68, 68, 0.4);
+  font-size: 44px;
+  animation: comboPop 200ms ease-out;
+}
+@keyframes comboPop {
+  0% { transform: scale(0.5) translateY(20px); }
+  60% { transform: scale(1.15) translateY(-5px); }
+  100% { transform: scale(1) translateY(0); }
+}
+
+/* Combo 棋盤邊框發光 */
+.board.combo-glow {
+  box-shadow: 0 0 20px rgba(251, 191, 36, 0.5), inset 0 0 15px rgba(251, 191, 36, 0.2);
+  animation: glowPulse 300ms ease-out;
+}
+.board.combo-glow.high {
+  box-shadow: 0 0 30px rgba(249, 115, 22, 0.6), inset 0 0 20px rgba(249, 115, 22, 0.25);
+}
+.board.combo-glow.super {
+  box-shadow: 0 0 40px rgba(239, 68, 68, 0.7), inset 0 0 25px rgba(239, 68, 68, 0.3);
+}
+@keyframes glowPulse {
+  0% { filter: brightness(1.15); }
+  100% { filter: brightness(1); }
+}
+
+/* 爆炸光環 - 大消除特效 */
+.explosion-ring {
+  position: fixed;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 199;
+  transform: translate(-50%, -50%);
+  animation: ringExpand 500ms ease-out forwards;
+}
+.explosion-ring.red    { border: 3px solid #ff4400; box-shadow: 0 0 20px #ff4400, inset 0 0 15px rgba(255,68,0,0.5); }
+.explosion-ring.blue   { border: 3px solid #2288ee; box-shadow: 0 0 20px #2288ee, inset 0 0 15px rgba(34,136,238,0.5); }
+.explosion-ring.green  { border: 3px solid #22aa44; box-shadow: 0 0 20px #22aa44, inset 0 0 15px rgba(34,170,68,0.5); }
+.explosion-ring.yellow { border: 3px solid #ffcc00; box-shadow: 0 0 20px #ffcc00, inset 0 0 15px rgba(255,204,0,0.5); }
+.explosion-ring.purple { border: 3px solid #aa55ee; box-shadow: 0 0 20px #aa55ee, inset 0 0 15px rgba(170,85,238,0.5); }
+.explosion-ring.heart  { border: 3px solid #ff4488; box-shadow: 0 0 20px #ff4488, inset 0 0 15px rgba(255,68,136,0.5); }
+
+@keyframes ringExpand {
+  0% {
+    width: 20px;
+    height: 20px;
+    opacity: 1;
+    border-width: 4px;
+  }
+  100% {
+    width: 100px;
+    height: 100px;
+    opacity: 0;
+    border-width: 1px;
+  }
+}
+
+/* 粒子特效 - 根據顏色不同動畫 */
+.particle {
+  position: fixed;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 200;
+  --dx: 0px;
+  --dy: 0px;
+}
+
+/* 大消除粒子 - 更大更亮 */
+.particle.big-match {
+  width: 12px;
+  height: 12px;
+  filter: brightness(1.3);
+}
+
+/* 紅色 - 火焰爆裂 */
+.particle.red    { 
+  background: radial-gradient(circle, #ffcc00 20%, #ff4400 60%, #cc0000 100%); 
+  box-shadow: 0 0 8px #ff4400, 0 0 12px #ff6600; 
+  animation: particleFire 450ms ease-out forwards;
+}
+.particle.red.big-match { animation: particleFireBig 650ms ease-out forwards; }
+
+/* 藍色 - 水波紋散開 */
+.particle.blue   { 
+  background: radial-gradient(circle, #aaddff 30%, #2288ee 100%); 
+  box-shadow: 0 0 6px #44aaff; 
+  animation: particleWater 550ms ease-out forwards;
+  border-radius: 40% 60% 50% 50%;
+}
+
+/* 綠色 - 葉片飄散 */
+.particle.green  { 
+  background: linear-gradient(135deg, #88ff88 0%, #22aa44 100%); 
+  box-shadow: 0 0 5px #44cc66; 
+  animation: particleLeaf 600ms ease-out forwards;
+  border-radius: 0 70% 0 70%;
+  width: 10px;
+  height: 6px;
+}
+
+/* 黃色 - 閃光星芒 */
+.particle.yellow { 
+  background: #fff8aa; 
+  box-shadow: 0 0 10px #ffee44, 0 0 20px #ffcc00; 
+  animation: particleStar 400ms ease-out forwards;
+  clip-path: polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%);
+  width: 12px;
+  height: 12px;
+  border-radius: 0;
+}
+
+/* 紫色 - 魔法漩渦 */
+.particle.purple { 
+  background: radial-gradient(circle, #eeddff 20%, #aa55ee 70%, #6622aa 100%); 
+  box-shadow: 0 0 8px #bb66ff, 0 0 15px #9933ff; 
+  animation: particleMagic 500ms ease-out forwards;
+}
+
+/* 心色 - 愛心飄散 */
+.particle.heart  { 
+  background: radial-gradient(circle, #ffaacc 30%, #ff4488 100%); 
+  box-shadow: 0 0 8px #ff66aa; 
+  animation: particleHeart 550ms ease-out forwards;
+  clip-path: path('M4 2 C2 0, 0 1, 0 2.5 C0 4, 2 5.5, 4 7 C6 5.5, 8 4, 8 2.5 C8 1, 6 0, 4 2 Z');
+  width: 10px;
+  height: 10px;
+  border-radius: 0;
+}
+
+/* 火焰動畫 - 快速爆裂向上飄 */
+@keyframes particleFire {
+  0% {
+    transform: translate(-50%, -50%) scale(1.2);
+    opacity: 1;
+  }
+  50% {
+    transform: translate(calc(-50% + var(--dx) * 0.6), calc(-50% + var(--dy) * 0.6 - 15px)) scale(0.9);
+    opacity: 0.9;
+  }
+  100% {
+    transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy) - 30px)) scale(0);
+    opacity: 0;
+  }
+}
+
+/* 水波動畫 - 緩慢擴散 */
+@keyframes particleWater {
+  0% {
+    transform: translate(-50%, -50%) scale(0.8) rotate(0deg);
+    opacity: 0.9;
+  }
+  60% {
+    transform: translate(calc(-50% + var(--dx) * 0.7), calc(-50% + var(--dy) * 0.7)) scale(1.1) rotate(180deg);
+    opacity: 0.7;
+  }
+  100% {
+    transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) scale(0.3) rotate(360deg);
+    opacity: 0;
+  }
+}
+
+/* 葉片動畫 - 飄落旋轉 */
+@keyframes particleLeaf {
+  0% {
+    transform: translate(-50%, -50%) scale(1) rotate(0deg);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy) + 20px)) scale(0.5) rotate(360deg);
+    opacity: 0;
+  }
+}
+
+/* 星芒動畫 - 閃爍擴散 */
+@keyframes particleStar {
+  0% {
+    transform: translate(-50%, -50%) scale(0.5) rotate(0deg);
+    opacity: 1;
+    filter: brightness(2);
+  }
+  30% {
+    transform: translate(calc(-50% + var(--dx) * 0.3), calc(-50% + var(--dy) * 0.3)) scale(1.3) rotate(72deg);
+    opacity: 1;
+    filter: brightness(1.5);
+  }
+  100% {
+    transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) scale(0) rotate(180deg);
+    opacity: 0;
+    filter: brightness(1);
+  }
+}
+
+/* 魔法動畫 - 螺旋消散 */
+@keyframes particleMagic {
+  0% {
+    transform: translate(-50%, -50%) scale(1) rotate(0deg);
+    opacity: 1;
+  }
+  50% {
+    transform: translate(calc(-50% + var(--dx) * 0.5 + 10px), calc(-50% + var(--dy) * 0.5)) scale(1.2) rotate(180deg);
+    opacity: 0.8;
+  }
+  100% {
+    transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) scale(0) rotate(540deg);
+    opacity: 0;
+  }
+}
+
+/* 愛心動畫 - 飄浮上升 */
+@keyframes particleHeart {
+  0% {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 1;
+  }
+  40% {
+    transform: translate(calc(-50% + var(--dx) * 0.4), calc(-50% + var(--dy) * 0.4 - 10px)) scale(1.2);
+    opacity: 0.9;
+  }
+  100% {
+    transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy) - 25px)) scale(0.3);
+    opacity: 0;
+  }
+}
+
+/* ===== 大消除動畫 ===== */
+
+/* 火焰大爆發 */
+@keyframes particleFireBig {
+  0% {
+    transform: translate(-50%, -50%) scale(1.5);
+    opacity: 1;
+    filter: brightness(1.5);
+  }
+  30% {
+    transform: translate(calc(-50% + var(--dx) * 0.3), calc(-50% + var(--dy) * 0.3 - 25px)) scale(1.8);
+    opacity: 1;
+    filter: brightness(2);
+  }
+  100% {
+    transform: translate(calc(-50% + var(--dx) * 1.3), calc(-50% + var(--dy) * 0.8 - 60px)) scale(0);
+    opacity: 0;
+    filter: brightness(1);
+  }
+}
