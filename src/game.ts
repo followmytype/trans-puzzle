@@ -231,6 +231,7 @@ function updateOrbs(state: GameState, skipDuringDrag = false) {
       orb.classList.toggle('dragging', state.dragging && state.dragRow === r && state.dragCol === c)
       orb.classList.toggle('matched', !!(state.matched && state.matched[r][c]))
       orb.classList.toggle('matched-big', !!(state.matchedBig && state.matchedBig[r][c]))
+      orb.classList.toggle('enhanced', state.enhanced.has(key))
       orb.classList.toggle('trail', isTrailCell(state, r, c))
 
       // 下落動畫
@@ -418,6 +419,14 @@ function attachPointer(board: HTMLElement, state: GameState, onUpdate: () => voi
     state.grid[cur.row][cur.col] = temp
     state.dragRow = next.row
     state.dragCol = next.col
+    
+    // 交換強化珠狀態
+    const curEnhanced = state.enhanced.has(curKey)
+    const nextEnhanced = state.enhanced.has(nextKey)
+    state.enhanced.delete(curKey)
+    state.enhanced.delete(nextKey)
+    if (curEnhanced) state.enhanced.set(nextKey, true)
+    if (nextEnhanced) state.enhanced.set(curKey, true)
     
     // 震動回饋（輕微）
     if (navigator.vibrate) {
@@ -644,6 +653,69 @@ function applyGravity(g: Cell[][]): Map<string, number> {
   return fallMap
 }
 
+// 支援強化珠的重力函數
+function applyGravityWithEnhanced(
+  g: Cell[][],
+  enhanced: Map<string, boolean>,
+  pendingEnhanced: Array<{ col: number; colorIndex: number }>
+): Map<string, number> {
+  const fallMap = new Map<string, number>()
+  
+  // 追蹤每列原本的強化珠位置，跟著珠子一起移動
+  const oldEnhanced = new Map(enhanced)
+  enhanced.clear()
+  
+  for (let c = 0; c < COLS; c++) {
+    let writeRow = ROWS - 1
+    
+    // 先移動現有珠子
+    for (let r = ROWS - 1; r >= 0; r--) {
+      const v = g[r][c]
+      if (v >= 0) {
+        const distance = writeRow - r
+        const oldKey = `${r},${c}`
+        const newKey = `${writeRow},${c}`
+        
+        if (distance > 0) {
+          g[writeRow][c] = v
+          g[r][c] = -1
+          fallMap.set(newKey, distance)
+        }
+        
+        // 如果原位置是強化珠，移動到新位置
+        if (oldEnhanced.has(oldKey)) {
+          enhanced.set(newKey, true)
+        }
+        
+        writeRow--
+      }
+    }
+    
+    // 檢查這一列是否有待產生的強化珠
+    const pendingForCol = pendingEnhanced.filter(p => p.col === c)
+    
+    // 頂部補新珠子並記錄下落距離
+    let newOrbIndex = 0
+    for (let r = writeRow; r >= 0; r--) {
+      const newKey = `${r},${c}`
+      
+      // 檢查是否應該是強化珠
+      if (newOrbIndex < pendingForCol.length) {
+        // 這顆是強化珠
+        g[r][c] = pendingForCol[newOrbIndex].colorIndex
+        enhanced.set(newKey, true)
+        newOrbIndex++
+      } else {
+        g[r][c] = randColorIndex()
+      }
+      
+      // 新珠子從頂部外面掉下來
+      fallMap.set(newKey, writeRow + 1 - r + (ROWS - 1 - writeRow))
+    }
+  }
+  return fallMap
+}
+
 function refill(g: Cell[][]) {
   for (let r = 0; r < ROWS; r++) {
     for (let c = 0; c < COLS; c++) {
@@ -715,7 +787,8 @@ function animateResolveChain(state: GameState, onUpdate: () => void) {
         
         // 完成本輪逐組消除，執行重力並取得每顆珠子的下落距離
         setTimeout(() => {
-          const fallMap = applyGravity(state.grid)
+          const fallMap = applyGravityWithEnhanced(state.grid, state.enhanced, state.pendingEnhanced)
+          state.pendingEnhanced = []  // 清空待產生的強化珠
           state.fallDistances = fallMap
           state.falling = true
           state.matched = undefined
@@ -784,6 +857,23 @@ function animateResolveChain(state: GameState, onUpdate: () => void) {
       
       onUpdate()
       setTimeout(() => {
+        // 取得顏色（在清除前）
+        const colorIndex = state.grid[g[0][0]][g[0][1]]
+        
+        // 超級消除：記錄要產生的強化珠（選擇該組最低的一個位置的 column）
+        if (isBigMatch && colorIndex >= 0) {
+          // 找出該組最低的位置（row 最大）
+          let lowestRow = -1
+          let lowestCol = -1
+          for (const [r, c] of g) {
+            if (r > lowestRow) {
+              lowestRow = r
+              lowestCol = c
+            }
+          }
+          state.pendingEnhanced.push({ col: lowestCol, colorIndex })
+        }
+        
         for (const [r,c] of g) {
           if (state.grid[r][c] >= 0) { state.grid[r][c] = -1; totalRemoved++ }
         }
@@ -815,6 +905,7 @@ function pruneTrail(state: GameState) {
 
 export type GameState = {
   grid: Cell[][]
+  enhanced: Map<string, boolean>  // 強化珠位置 "row,col" -> true
   score: number
   lastCombo: number
   dragging: boolean
@@ -843,11 +934,14 @@ export type GameState = {
   pointerX?: number
   pointerY?: number
   draggedOrb?: HTMLElement
+  // 超級消除產生的強化珠（待落下）
+  pendingEnhanced: Array<{ col: number; colorIndex: number }>
 }
 
 export function createGame(root: HTMLElement) {
   const state: GameState = {
     grid: makeGrid(),
+    enhanced: new Map(),
     score: 0,
     lastCombo: 0,
     dragging: false,
@@ -865,6 +959,7 @@ export function createGame(root: HTMLElement) {
     fallDistances: new Map(),
     dragTimeLimit: 5500,  // 5.5 秒
     dragTimeRemaining: 5500,
+    pendingEnhanced: [],
   }
   render(root, state)
 }
